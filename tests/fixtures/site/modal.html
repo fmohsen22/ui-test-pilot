@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Fixture Modal</title></head>
+<body>
+  <h1>Page with modal</h1>
+  <button id="open-modal">Open dialog</button>
+  <a href="/index.html">Back home</a>
+  <div id="overlay" role="dialog" aria-modal="true" style="display:none; border:1px solid">
+    <h2>Confirm action</h2>
+    <input id="confirm-input" placeholder="Type CONFIRM">
+    <button id="confirm-btn">Confirm</button>
+    <button id="cancel-btn">Cancel</button>
+  </div>
+  <script>
+    document.getElementById('open-modal').addEventListener('click', () => {
+      document.getElementById('overlay').style.display = 'block';
+    });
+    document.getElementById('confirm-btn').addEventListener('click', () => {
+      if (document.getElementById('confirm-input').value === 'CONFIRM') {
+        window.location.href = '/dashboard.html';
+      }
+    });
+  </script>
+</body>
+</html>

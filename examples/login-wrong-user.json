@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "id": "example-login-wrong-user",
+  "title": "Login rejected for unknown user",
+  "feature": "auth/login",
+  "tags": ["auth", "negative", "example"],
+  "steps": [
+    {
+      "description": "Open the login page directly",
+      "action": "goto",
+      "value": "/login.html"
+    },
+    {
+      "description": "Enter a nonexistent username (avoids brute-force lockout of real accounts)",
+      "action": "fill",
+      "target": [{ "strategy": "id", "value": "username" }],
+      "value": "no-such-user-uitp"
+    },
+    {
+      "description": "Enter any password",
+      "action": "fill",
+      "secret": true,
+      "target": [{ "strategy": "id", "value": "password" }],
+      "value": "irrelevant-wrong"
+    },
+    {
+      "description": "Submit",
+      "action": "click",
+      "target": [{ "strategy": "id", "value": "kc-login" }]
+    },
+    {
+      "description": "Error message is shown",
+      "action": "expect",
+      "target": [
+        { "strategy": "id", "value": "error" },
+        { "strategy": "text", "value": "Invalid username or password" }
+      ],
+      "expect": { "type": "visible" }
+    },
+    {
+      "description": "Still on the login page",
+      "action": "expect",
+      "expect": { "type": "url", "value": "**/login.html*" }
+    }
+  ]
+}

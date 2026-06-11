@@ -1,0 +1,8 @@
+{
+  "name": "ui-test-pilot",
+  "description": "Agent-driven JSON-protocol UI testing: author, heal, and run Playwright scenarios as JSON testcases via the uitp CLI.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Mohsen Fakhari"
+  }
+}

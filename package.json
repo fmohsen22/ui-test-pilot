@@ -1,0 +1,39 @@
+{
+  "name": "ui-test-pilot",
+  "version": "0.1.0",
+  "description": "Agent-driven JSON-protocol UI testing: a deterministic Playwright runner driven by AI agents (Claude Code, Codex) that author and heal scenario JSON files.",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "bin": {
+    "uitp": "dist/cli.js"
+  },
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "adapters",
+    "examples",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "prepare": "tsc"
+  },
+  "dependencies": {
+    "commander": "^12.1.0",
+    "dotenv": "^16.4.5",
+    "picocolors": "^1.1.0",
+    "playwright": "^1.49.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0"
+  }
+}

@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "id": "example-login-happy",
+  "title": "User logs in with valid credentials",
+  "feature": "auth/login",
+  "tags": ["auth", "smoke", "example"],
+  "env": { "required": ["EXAMPLE_PASSWORD"] },
+  "steps": [
+    {
+      "description": "Open the app root",
+      "action": "goto",
+      "value": "/"
+    },
+    {
+      "description": "Go to the login form",
+      "action": "click",
+      "target": [
+        { "strategy": "testid", "value": "nav-login" },
+        { "strategy": "role", "value": "link", "name": "Log in" }
+      ]
+    },
+    {
+      "description": "Enter the username",
+      "action": "fill",
+      "target": [
+        { "strategy": "id", "value": "username" },
+        { "strategy": "label", "value": "Username or email" }
+      ],
+      "value": "testuser"
+    },
+    {
+      "description": "Enter the password",
+      "action": "fill",
+      "secret": true,
+      "target": [{ "strategy": "id", "value": "password" }],
+      "value": "${EXAMPLE_PASSWORD}"
+    },
+    {
+      "description": "Submit the login form",
+      "action": "click",
+      "target": [
+        { "strategy": "id", "value": "kc-login" },
+        { "strategy": "role", "value": "button", "name": "Sign In" }
+      ]
+    },
+    {
+      "description": "Wait for the dashboard",
+      "action": "waitFor",
+      "waitFor": { "url": "**/dashboard*" }
+    },
+    {
+      "description": "Greeting proves we are logged in",
+      "action": "expect",
+      "target": [{ "strategy": "testid", "value": "greeting" }],
+      "expect": { "type": "visible" }
+    }
+  ]
+}

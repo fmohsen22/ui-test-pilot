@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Fixture Login</title></head>
+<body>
+  <h1>Sign in</h1>
+  <p id="error" class="error" style="display:none">Invalid username or password.</p>
+  <form id="login-form">
+    <label for="username">Username or email</label>
+    <input id="username" name="username" type="text" placeholder="you@example.com">
+    <label for="password">Password</label>
+    <input id="password" name="password" type="password">
+    <label><input type="checkbox" id="remember"> Remember me</label>
+    <select id="language" aria-label="Language">
+      <option>English</option>
+      <option>Deutsch</option>
+    </select>
+    <button id="kc-login" type="submit">Sign In</button>
+    <a href="/index.html">Forgot Password?</a>
+  </form>
+  <script>
+    document.getElementById('login-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const u = document.getElementById('username').value;
+      const p = document.getElementById('password').value;
+      if (u === 'testuser' && p === 'fixture-pass') {
+        window.location.href = '/dashboard.html';
+      } else {
+        document.getElementById('error').style.display = 'block';
+      }
+    });
+  </script>
+</body>
+</html>
