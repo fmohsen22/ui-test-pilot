@@ -95,7 +95,15 @@ export async function executeStep(ctx: StepContext, step: Step): Promise<TargetC
       const { locator, matched } = await resolveTarget(scope, step.target!);
       switch (step.action) {
         case 'click':
-          await locator.click({ timeout });
+          if (step.force) {
+            // Escape hatch for elements a normal click can't reach: persistent
+            // CSS animations that never settle actionability, or an overlay that
+            // intercepts the pointer. Dispatch the click event straight at the
+            // element (bypasses actionability + hit-testing entirely).
+            await locator.dispatchEvent('click', {}, { timeout });
+          } else {
+            await locator.click({ timeout });
+          }
           await waitForDomQuiet(page);
           break;
         case 'fill':

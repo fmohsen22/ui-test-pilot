@@ -97,6 +97,11 @@ export const Step = z
     value: z.string().optional(),
     /** Redact value in all reports and digests. */
     secret: z.boolean().optional(),
+    /** click only: dispatch the click event straight at the element, bypassing
+     *  actionability checks and pointer hit-testing. For elements a normal click
+     *  can't reach — a persistent CSS animation that never settles, or an overlay
+     *  that intercepts the pointer. Use sparingly. */
+    force: z.boolean().optional(),
     /** Scope element lookup to a single-level iframe (css selector for the iframe element). */
     frame: z.string().optional(),
     timeoutMs: z.number().int().min(100).max(120_000).optional(),
