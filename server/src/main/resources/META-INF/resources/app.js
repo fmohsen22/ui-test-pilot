@@ -173,7 +173,8 @@ async function loadTree() {
     details.className = 'tree-folder';
     details.open = true;
     const summary = document.createElement('summary');
-    summary.textContent = `📁 ${folder} (${tree[folder].length})`;
+    const label = folder === '(root)' ? 'general' : folder;
+    summary.textContent = `📁 ${label} (${tree[folder].length})`;
     details.appendChild(summary);
     for (const s of tree[folder]) {
       const file = document.createElement('div');

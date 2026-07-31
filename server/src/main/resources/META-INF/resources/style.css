@@ -142,6 +142,30 @@ code { background: #eef2f7; padding: 2px 6px; border-radius: 6px; font-size: .85
 #run-result.fail { background: #fef2f2; border: 1px solid #fecaca; }
 #run-result pre { overflow-x: auto; font-size: .78rem; }
 
+/* ---------- responsive ---------- */
+@media (max-width: 1180px) {
+  .reg-layout { flex-direction: column; }
+  .reg-tree { width: 100%; max-height: 260px; }
+  .chat-layout { flex-direction: column; height: calc(100vh - 44px); }
+  .conv-list { width: 100%; display: flex; gap: 8px; overflow-x: auto; overflow-y: hidden; flex-shrink: 0; }
+  .conv-list .primary.block { width: auto; margin: 0; white-space: nowrap; }
+  .conv-list > div { display: flex; gap: 6px; }
+  .conv-item { margin: 0; max-width: 180px; flex-shrink: 0; }
+  .chat-pane { flex: 1; min-height: 0; }
+}
+@media (max-width: 760px) {
+  .app { flex-direction: column; }
+  .sidebar { width: 100%; height: auto; position: static; flex-direction: row; align-items: center; }
+  .sidebar .brand.small { padding: 12px 14px; white-space: nowrap; }
+  .sidebar nav { flex-direction: row; padding: 0 6px; }
+  .sidebar nav a { padding: 8px 10px; white-space: nowrap; }
+  .sidebar-footer { border-top: none; margin-left: auto; display: flex; gap: 10px; align-items: center; }
+  #whoami { margin: 0; }
+  .main { padding: 14px; }
+  .chat-layout { height: calc(100vh - 120px); }
+  .reg-head { flex-direction: column; }
+}
+
 /* ---------- admin ---------- */
 .admin-tabs { margin-bottom: 14px; display: flex; gap: 6px; }
 .admin-tabs button { border: 1px solid var(--line); }
