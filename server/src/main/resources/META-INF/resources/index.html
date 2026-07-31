@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>UI Test Pilot</title>
-  <link rel="stylesheet" href="style.css?v=0.2.0">
+  <link rel="stylesheet" href="style.css?v=0.2.1">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧭</text></svg>">
 </head>
 <body>
@@ -46,8 +46,17 @@
     <nav>
       <a id="nav-chat" href="#" onclick="showTab('chat');return false" class="active">💬 Chat</a>
       <a id="nav-regression" href="#" onclick="showTab('regression');return false">🧪 Regression Tests</a>
+      <a id="nav-results" href="#" onclick="showTab('results');return false">📊 Results</a>
       <a id="nav-admin" href="#" onclick="showTab('admin');return false" class="hidden">🛡️ Admin</a>
     </nav>
+    <div class="browser-pick">
+      <label for="browser-select">Test browser</label>
+      <select id="browser-select" onchange="setBrowser(this.value)">
+        <option value="chromium">🌐 Chromium</option>
+        <option value="firefox">🦊 Firefox</option>
+        <option value="webkit">🧭 WebKit (Safari)</option>
+      </select>
+    </div>
     <div class="sidebar-footer">
       <div id="whoami"></div>
       <a href="#" onclick="logout();return false">Sign out</a>
@@ -109,6 +118,14 @@
       </div>
     </section>
 
+    <!-- ============ results tab ============ -->
+    <section id="tab-results" class="tab hidden">
+      <div class="pane-title big">Test results
+        <button class="ghost" onclick="loadResults()">↻ Refresh</button>
+      </div>
+      <div id="results-list"></div>
+    </section>
+
     <!-- ============ admin tab ============ -->
     <section id="tab-admin" class="tab hidden">
       <div class="admin-tabs">
@@ -122,6 +139,6 @@
   </main>
 </div>
 
-<script src="app.js?v=0.2.0"></script>
+<script src="app.js?v=0.2.1"></script>
 </body>
 </html>

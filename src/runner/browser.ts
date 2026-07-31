@@ -1,4 +1,13 @@
-import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
+import { chromium, firefox, webkit, type Browser, type BrowserContext, type Page } from 'playwright';
+
+/** Browser engine selection: UITP_BROWSER=chromium|firefox|webkit (default chromium). */
+export type BrowserName = 'chromium' | 'firefox' | 'webkit';
+
+export function selectedBrowser(): BrowserName {
+  const raw = (process.env.UITP_BROWSER ?? 'chromium').toLowerCase().trim();
+  if (raw === 'firefox' || raw === 'webkit' || raw === 'chromium') return raw;
+  return 'chromium';
+}
 
 export class InfrastructureError extends Error {
   constructor(message: string, public readonly cause?: unknown) {
@@ -24,12 +33,14 @@ export interface BrowserOptions {
 }
 
 export async function openSession(opts: BrowserOptions = {}): Promise<BrowserSession> {
+  const name = selectedBrowser();
+  const engine = name === 'firefox' ? firefox : name === 'webkit' ? webkit : chromium;
   let browser: Browser;
   try {
-    browser = await chromium.launch({ headless: !opts.headed });
+    browser = await engine.launch({ headless: !opts.headed });
   } catch (e) {
     throw new InfrastructureError(
-      `Failed to launch chromium — run "npx playwright install chromium". ${(e as Error).message.split('\n')[0]}`,
+      `Failed to launch ${name} — run "npx playwright install ${name}". ${(e as Error).message.split('\n')[0]}`,
       e,
     );
   }

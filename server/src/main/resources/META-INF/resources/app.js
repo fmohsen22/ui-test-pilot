@@ -70,18 +70,25 @@ async function boot() {
   el('app-view').classList.remove('hidden');
   el('whoami').textContent = `${me.firstName} ${me.lastName}` + (me.position ? ` · ${me.position}` : '');
   el('nav-admin').classList.toggle('hidden', !me.admin);
+  el('browser-select').value = getBrowser();
   showTab('chat');
   loadConversations();
 }
 
 function showTab(name) {
-  for (const t of ['chat', 'regression', 'admin']) {
+  for (const t of ['chat', 'regression', 'results', 'admin']) {
     el('tab-' + t).classList.toggle('hidden', t !== name);
     el('nav-' + t).classList.toggle('active', t === name);
   }
   if (name === 'regression') loadTree();
+  if (name === 'results') loadResults();
   if (name === 'admin') loadAdmin('users');
 }
+
+/* ---------------- browser picker ---------------- */
+function getBrowser() { return localStorage.getItem('uitp_browser') || 'chromium'; }
+function setBrowser(b) { localStorage.setItem('uitp_browser', b); }
+
 
 /* ---------------- chat ---------------- */
 async function loadConversations() {
@@ -146,7 +153,7 @@ async function sendMessage() {
   box.scrollTop = box.scrollHeight;
   try {
     const c = await api(`/api/chat/conversations/${currentConversation}/messages`, {
-      method: 'POST', body: JSON.stringify({ content: text })
+      method: 'POST', body: JSON.stringify({ content: text, browser: getBrowser() })
     });
     renderMessages(c.messages);
     loadConversations();
@@ -230,16 +237,23 @@ async function runScenario(heal) {
       body: JSON.stringify({ path: currentScenarioPath, content: el('reg-json').value })
     });
     const r = await api('/api/regression/run', {
-      method: 'POST', body: JSON.stringify({ path: currentScenarioPath, heal })
+      method: 'POST', body: JSON.stringify({ path: currentScenarioPath, heal, browser: getBrowser() })
     });
     let html = r.passed
-      ? `<strong>✅ PASSED</strong> after ${r.attempts.length} attempt(s).`
-      : `<strong>❌ FAILED</strong> (exit ${r.exitCode}) after ${r.attempts.length} attempt(s).`;
+      ? `<strong>✅ PASSED</strong> after ${r.attempts.length} attempt(s) on ${r.browser}.`
+      : `<strong>❌ FAILED</strong> (exit ${r.exitCode}) after ${r.attempts.length} attempt(s) on ${r.browser}.`;
     html += `<details><summary>Full report</summary><pre>${escapeHtml(JSON.stringify(r.attempts, null, 2))}</pre></details>`;
+    if (r.screenshot) html += `<div class="shot"><div class="cap">Final page state:</div><img data-shot="${escapeHtml(r.screenshot)}" alt="final screenshot"></div>`;
     flashResult(r.passed, html, true);
+    loadShots(el('run-result'));
+    const savedResult = el('run-result').innerHTML;
+    const savedClass = el('run-result').className;
     await openScenario(currentScenarioPath, document.querySelector('.tree-file.active')); // healed JSON may differ
     const box = el('run-result');
+    box.className = savedClass;
+    box.innerHTML = savedResult;
     box.classList.remove('hidden');
+    loadShots(box);
   } catch (e) { flashResult(false, 'Run failed: ' + e.message); }
 }
 
@@ -248,6 +262,55 @@ function flashResult(ok, message, isHtml) {
   box.classList.remove('hidden', 'pass', 'fail');
   box.classList.add(ok ? 'pass' : 'fail');
   if (isHtml) box.innerHTML = message; else box.textContent = message;
+}
+
+/* ---------------- screenshots (need auth header, so fetch as blob) ---------------- */
+async function loadShots(scope) {
+  for (const img of (scope || document).querySelectorAll('img[data-shot]')) {
+    if (img.src) continue;
+    try {
+      const res = await fetch('/api/regression/artifact?path=' + encodeURIComponent(img.dataset.shot),
+        { headers: { 'Authorization': 'Bearer ' + token } });
+      if (res.ok) img.src = URL.createObjectURL(await res.blob());
+      else img.closest('.shot').remove();
+    } catch (e) { /* leave empty */ }
+  }
+}
+
+/* ---------------- results ---------------- */
+async function loadResults() {
+  const box = el('results-list');
+  box.innerHTML = '<div class="placeholder">Loading…</div>';
+  const runs = await api('/api/regression/results');
+  if (!runs.length) {
+    box.innerHTML = '<div class="placeholder">No runs yet. Run a test case from the Regression Tests menu — every run lands here with its result and final screenshot.</div>';
+    return;
+  }
+  box.innerHTML = '';
+  for (const r of runs) {
+    const card = document.createElement('div');
+    card.className = 'result-card';
+    const when = r.ts.replace('T', ' ').slice(0, 19);
+    const dur = r.durationMs > 1000 ? (r.durationMs / 1000).toFixed(1) + 's' : r.durationMs + 'ms';
+    card.innerHTML =
+      `<div class="result-head">` +
+      `<span class="pill ${r.passed ? 'pass' : 'fail'}">${r.passed ? 'PASS' : 'FAIL'}</span>` +
+      (r.healed ? '<span class="pill healed">self-healed</span>' : '') +
+      `<strong>${escapeHtml(r.scenarioId || r.scenarioPath)}</strong>` +
+      `<span class="badge">${escapeHtml(r.browser)}</span>` +
+      `<span class="badge">${r.attempts} attempt${r.attempts > 1 ? 's' : ''}</span>` +
+      `<span class="result-meta">${escapeHtml(r.user)} · ${when} · ${dur}</span>` +
+      `</div>` +
+      `<div class="result-body">` +
+      (r.screenshot ? `<div class="shot"><div class="cap">Final page state:</div><img data-shot="${escapeHtml(r.screenshot)}" alt="screenshot"></div>` : '') +
+      `<details><summary>Full report</summary><pre>${escapeHtml(JSON.stringify(JSON.parse(r.report || '[]'), null, 2))}</pre></details>` +
+      `</div>`;
+    card.querySelector('.result-head').onclick = () => {
+      card.classList.toggle('open');
+      if (card.classList.contains('open')) loadShots(card);
+    };
+    box.appendChild(card);
+  }
 }
 
 /* ---------------- admin ---------------- */

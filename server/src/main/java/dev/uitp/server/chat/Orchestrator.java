@@ -80,8 +80,13 @@ public class Orchestrator {
 
     /** Runs the agent loop. Persists tool messages into the conversation as it goes. */
     public Reply respond(Conversation conversation, List<ChatMessage> history) {
+        return respond(conversation, history, null);
+    }
+
+    public Reply respond(Conversation conversation, List<ChatMessage> history, String browserChoice) {
+        String browser = dev.uitp.server.runner.UitpCli.browserOrDefault(browserChoice);
         if ("codex".equalsIgnoreCase(provider)) {
-            return respondViaCodex(conversation, history);
+            return respondViaCodex(conversation, history, browser);
         }
         ArrayNode messages = MAPPER.createArrayNode();
         messages.add(msg("system", SYSTEM_PROMPT + "\nProject dir: " + cli.projectDir()));
@@ -111,7 +116,7 @@ public class Orchestrator {
             for (JsonNode call : toolCalls) {
                 String name = call.path("function").path("name").asText();
                 String argsRaw = call.path("function").path("arguments").asText("{}");
-                String result = executeTool(name, argsRaw);
+                String result = executeTool(name, argsRaw, browser);
                 events.add(new ToolEvent(name, argsRaw, result));
                 persistToolMessage(conversation, name, argsRaw, result);
                 ObjectNode toolMsg = MAPPER.createObjectNode();
@@ -132,7 +137,7 @@ public class Orchestrator {
      * inside the project dir, then reports back. Auth comes from `codex login`
      * (the user's ChatGPT account), so no API key is involved.
      */
-    private Reply respondViaCodex(Conversation conversation, List<ChatMessage> history) {
+    private Reply respondViaCodex(Conversation conversation, List<ChatMessage> history, String browser) {
         StringBuilder prompt = new StringBuilder();
         prompt.append(SYSTEM_PROMPT);
         prompt.append("\nYou are running inside the project dir. The uitp runner is invoked as:\n  node ")
@@ -147,7 +152,7 @@ public class Orchestrator {
         }
         prompt.append("\nRespond to the last USER message. Do the work now; your final message is shown to the user.");
 
-        var result = codex.exec(prompt.toString(), cli.projectDir());
+        var result = codex.exec(prompt.toString(), cli.projectDir(), browser);
         persistToolMessage(conversation, "codex",
                 "exec in " + cli.projectDir(), truncate(result.transcript(), 20_000));
         String text = result.finalMessage().isBlank()
@@ -163,7 +168,7 @@ public class Orchestrator {
                 .toAbsolutePath().normalize().resolve("dist/cli.js").toString();
     }
 
-    String executeTool(String name, String argsRaw) {
+    String executeTool(String name, String argsRaw, String browser) {
         try {
             JsonNode args = MAPPER.readTree(argsRaw.isBlank() ? "{}" : argsRaw);
             UitpCli.Result r;
@@ -183,11 +188,11 @@ public class Orchestrator {
                     UitpCli.Result v = cli.validate(path);
                     return "{\"saved\":\"" + path + "\",\"validate\":" + v.json().toString() + "}";
                 }
-                case "snapshot" -> r = cli.snapshot(args.path("url").asText(), args.path("full").asBoolean(false));
+                case "snapshot" -> r = cli.snapshot(args.path("url").asText(), args.path("full").asBoolean(false), browser);
                 case "run_scenario" -> r = cli.run(args.path("path").asText(),
-                        args.hasNonNull("untilStep") ? args.path("untilStep").asInt() : null);
+                        args.hasNonNull("untilStep") ? args.path("untilStep").asInt() : null, browser);
                 case "run_all" -> r = cli.runAll(args.path("dir").asText("scenarios"),
-                        args.hasNonNull("grep") ? args.path("grep").asText() : null);
+                        args.hasNonNull("grep") ? args.path("grep").asText() : null, browser);
                 default -> {
                     return "{\"error\":\"unknown tool " + name + "\"}";
                 }

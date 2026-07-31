@@ -55,4 +55,6 @@ export interface RunResult {
   digest: DomDigest | null;
   storageStateSaved: string | null;
   artifactsDir: string | null;
+  /** Screenshot of the final page state — captured on EVERY run (pass and fail). */
+  finalScreenshot: string | null;
 }

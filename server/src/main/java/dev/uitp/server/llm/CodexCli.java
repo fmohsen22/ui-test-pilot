@@ -33,6 +33,10 @@ public class CodexCli {
     long timeoutSeconds;
 
     public Result exec(String prompt, Path workDir) {
+        return exec(prompt, workDir, null);
+    }
+
+    public Result exec(String prompt, Path workDir, String browser) {
         try {
             Path lastMessage = Files.createTempFile("uitp-codex-", ".txt");
             List<String> cmd = new ArrayList<>(List.of(
@@ -49,6 +53,7 @@ public class CodexCli {
 
             ProcessBuilder pb = new ProcessBuilder(cmd);
             pb.redirectErrorStream(true);
+            if (browser != null) pb.environment().put("UITP_BROWSER", browser);
             // stdin MUST be closed (null device): codex waits forever on an open-but-empty
             // stdin pipe when spawned from a server process
             pb.redirectInput(ProcessBuilder.Redirect.from(nullDevice()));

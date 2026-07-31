@@ -33,7 +33,7 @@ public class ChatResource {
     @Inject
     ChatTx tx;
 
-    public record NewMessage(String content) {
+    public record NewMessage(String content, String browser) {
     }
 
     @GET
@@ -77,7 +77,7 @@ public class ChatResource {
         List<ChatMessage> history = ChatMessage.ofConversation(c);
         Orchestrator.Reply reply;
         try {
-            reply = orchestrator.respond(c, history);
+            reply = orchestrator.respond(c, history, req.browser());
         } catch (Exception e) {
             tx.log("ERROR", c.user.email, "chat.respond", e.toString());
             reply = new Orchestrator.Reply("Something went wrong talking to the model or the runner: "

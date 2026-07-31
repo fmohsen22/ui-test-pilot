@@ -56,4 +56,9 @@ public class ChatTx {
     public void log(String level, String userEmail, String action, String detail) {
         EventLog.log(level, userEmail, action, detail);
     }
+
+    @Transactional
+    public void testRun(dev.uitp.server.model.TestRun run) {
+        run.persist();
+    }
 }

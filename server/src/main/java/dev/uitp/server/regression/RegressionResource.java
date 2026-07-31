@@ -59,7 +59,7 @@ public class RegressionResource {
     public record SaveRequest(String path, String content) {
     }
 
-    public record RunRequest(String path, boolean heal) {
+    public record RunRequest(String path, boolean heal, String browser) {
     }
 
     @GET
@@ -111,9 +111,11 @@ public class RegressionResource {
     public Map<String, Object> run(RunRequest req) {
         var user = currentUser.require();
         if (req == null || req.path() == null) throw new BadRequestException("path required");
+        String browser = UitpCli.browserOrDefault(req.browser());
+        long started = System.currentTimeMillis();
 
         List<Map<String, Object>> attempts = new ArrayList<>();
-        UitpCli.Result result = cli.run(req.path(), null);
+        UitpCli.Result result = cli.run(req.path(), null, browser);
         attempts.add(attempt(1, result, null));
 
         int attempt = 1;
@@ -135,20 +137,96 @@ public class RegressionResource {
                 attempts.add(Map.of("note", "heal attempt failed: " + e.getMessage()));
                 break;
             }
-            result = cli.run(req.path(), null);
+            result = cli.run(req.path(), null, browser);
             attempts.add(attempt(attempt, result, "healed then re-ran"));
         }
 
         tx.log(result.passed() ? "INFO" : "ERROR", user.email, "regression.run",
                 req.path() + " -> exit " + result.exitCode() + " after " + attempts.size() + " attempt(s)");
+
+        dev.uitp.server.model.TestRun runRow = new dev.uitp.server.model.TestRun();
+        runRow.scenarioPath = req.path();
+        runRow.scenarioId = result.json().path("scenarioId").asText("");
+        runRow.browser = browser;
+        runRow.passed = result.passed();
+        runRow.exitCode = result.exitCode();
+        runRow.attempts = attempts.size();
+        runRow.healed = attempts.size() > 1 && result.passed();
+        runRow.durationMs = System.currentTimeMillis() - started;
+        runRow.userEmail = user.email;
+        runRow.screenshot = artifactRel(result.json().path("finalScreenshot").asText(null));
+        try {
+            runRow.reportJson = MAPPER.writeValueAsString(attempts);
+        } catch (Exception ignored) {
+        }
+        tx.testRun(runRow);
+
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("passed", result.passed());
         out.put("exitCode", result.exitCode());
+        out.put("browser", browser);
         out.put("attempts", attempts);
         out.put("finalReport", result.json());
+        out.put("screenshot", runRow.screenshot);
         try {
             out.put("scenario", scenario(req.path()));
         } catch (Exception ignored) {
+        }
+        return out;
+    }
+
+    /** Absolute artifact path -> path relative to the project dir (for the artifact endpoint), or null. */
+    private String artifactRel(String absolute) {
+        if (absolute == null || absolute.isBlank()) return null;
+        try {
+            java.nio.file.Path base = cli.projectDir();
+            java.nio.file.Path p = java.nio.file.Path.of(absolute).toAbsolutePath().normalize();
+            return p.startsWith(base) ? base.relativize(p).toString().replace('\\', '/') : null;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /** Serves run artifacts (screenshots) from inside the project dir — path-traversal safe. */
+    @GET
+    @Path("/artifact")
+    @Produces("image/png")
+    public byte[] artifact(@QueryParam("path") String relPath) throws java.io.IOException {
+        currentUser.require();
+        if (relPath == null || relPath.isBlank()) throw new BadRequestException("path required");
+        java.nio.file.Path base = cli.projectDir();
+        java.nio.file.Path p = base.resolve(relPath).normalize();
+        if (!p.startsWith(base) || !p.toString().endsWith(".png") || !java.nio.file.Files.exists(p)) {
+            throw new jakarta.ws.rs.NotFoundException();
+        }
+        return java.nio.file.Files.readAllBytes(p);
+    }
+
+    /** Run history for the Results menu, newest first. */
+    @GET
+    @Path("/results")
+    public List<Map<String, Object>> results(@QueryParam("scenario") String scenario) {
+        currentUser.require();
+        List<dev.uitp.server.model.TestRun> runs = scenario == null || scenario.isBlank()
+                ? dev.uitp.server.model.TestRun.list("order by id desc")
+                : dev.uitp.server.model.TestRun.list("scenarioPath = ?1 order by id desc", scenario);
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (dev.uitp.server.model.TestRun r : runs.subList(0, Math.min(runs.size(), 200))) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("id", r.id);
+            m.put("ts", r.ts.toString());
+            m.put("scenarioPath", r.scenarioPath);
+            m.put("scenarioId", r.scenarioId);
+            m.put("browser", r.browser);
+            m.put("passed", r.passed);
+            m.put("exitCode", r.exitCode);
+            m.put("attempts", r.attempts);
+            m.put("healed", r.healed);
+            m.put("durationMs", r.durationMs);
+            m.put("user", r.userEmail == null ? "" : r.userEmail);
+            m.put("screenshot", r.screenshot);
+            m.put("report", r.reportJson);
+            out.add(m);
         }
         return out;
     }
