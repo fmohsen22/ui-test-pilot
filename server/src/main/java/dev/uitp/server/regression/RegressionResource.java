@@ -1,0 +1,174 @@
+package dev.uitp.server.regression;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import dev.uitp.server.auth.CurrentUser;
+import dev.uitp.server.llm.LlmClient;
+import dev.uitp.server.model.EventLog;
+import dev.uitp.server.runner.ScenarioStore;
+import dev.uitp.server.runner.UitpCli;
+import jakarta.inject.Inject;
+import jakarta.transaction.Transactional;
+import jakarta.ws.rs.BadRequestException;
+import jakarta.ws.rs.GET;
+import jakarta.ws.rs.POST;
+import jakarta.ws.rs.PUT;
+import jakarta.ws.rs.Path;
+import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.QueryParam;
+import jakarta.ws.rs.core.MediaType;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
+
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+@Path("/api/regression")
+@Produces(MediaType.APPLICATION_JSON)
+public class RegressionResource {
+
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    @Inject
+    CurrentUser currentUser;
+
+    @Inject
+    ScenarioStore store;
+
+    @Inject
+    UitpCli cli;
+
+    @Inject
+    LlmClient llm;
+
+    @ConfigProperty(name = "llm.heal-attempts")
+    int healAttempts;
+
+    public record SaveRequest(String path, String content) {
+    }
+
+    public record RunRequest(String path, boolean heal) {
+    }
+
+    @GET
+    @Path("/tree")
+    public Map<String, List<Map<String, Object>>> tree() {
+        currentUser.require();
+        return store.tree();
+    }
+
+    @GET
+    @Path("/scenario")
+    public Map<String, Object> scenario(@QueryParam("path") String path) throws Exception {
+        currentUser.require();
+        String raw = store.read(path);
+        JsonNode json = MAPPER.readTree(raw);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("path", path);
+        out.put("id", json.path("id").asText(""));
+        out.put("title", json.path("title").asText(""));
+        out.put("raw", raw);
+        out.put("explained", Simplifier.explain(json));
+        return out;
+    }
+
+    @PUT
+    @Path("/scenario")
+    @Transactional
+    public Map<String, Object> save(SaveRequest req) {
+        var user = currentUser.require();
+        if (req == null || req.path() == null || req.content() == null) {
+            throw new BadRequestException("path and content required");
+        }
+        store.write(req.path(), req.content());
+        UitpCli.Result validation = cli.validate(req.path());
+        EventLog.log("INFO", user.email, "regression.save", req.path());
+        return Map.of("saved", true, "validate", validation.json());
+    }
+
+    /** Run one scenario; with heal=true, on failure the LLM repairs the JSON and re-runs (up to N attempts). */
+    @POST
+    @Path("/run")
+    @Transactional
+    public Map<String, Object> run(RunRequest req) {
+        var user = currentUser.require();
+        if (req == null || req.path() == null) throw new BadRequestException("path required");
+
+        List<Map<String, Object>> attempts = new ArrayList<>();
+        UitpCli.Result result = cli.run(req.path(), null);
+        attempts.add(attempt(1, result, null));
+
+        int attempt = 1;
+        while (!result.passed() && result.exitCode() == 1 && req.heal() && attempt <= healAttempts) {
+            if (!llm.configured()) {
+                attempts.add(Map.of("note", "self-heal skipped: no LLM configured (set UITP_LLM_API_KEY)"));
+                break;
+            }
+            attempt++;
+            String healed;
+            try {
+                healed = heal(store.read(req.path()), result.json());
+            } catch (Exception e) {
+                EventLog.log("ERROR", user.email, "regression.heal", e.toString());
+                attempts.add(Map.of("note", "heal attempt failed: " + e.getMessage()));
+                break;
+            }
+            store.write(req.path(), healed);
+            result = cli.run(req.path(), null);
+            attempts.add(attempt(attempt, result, "healed then re-ran"));
+        }
+
+        EventLog.log(result.passed() ? "INFO" : "ERROR", user.email, "regression.run",
+                req.path() + " -> exit " + result.exitCode() + " after " + attempts.size() + " attempt(s)");
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("passed", result.passed());
+        out.put("exitCode", result.exitCode());
+        out.put("attempts", attempts);
+        out.put("finalReport", result.json());
+        try {
+            out.put("scenario", scenario(req.path()));
+        } catch (Exception ignored) {
+        }
+        return out;
+    }
+
+    /** Single-shot heal: failure report + current JSON -> corrected full scenario JSON. */
+    private String heal(String currentJson, JsonNode failureReport) {
+        ArrayNode messages = MAPPER.createArrayNode();
+        messages.add(msg("system", """
+                You repair UI test scenarios for the deterministic uitp runner.
+                You get the current scenario JSON and the runner's failure report (failed step index,
+                error, fresh DOM digest with ranked selectors). Fix ONLY what is needed to make the
+                scenario pass — usually the failing step's target candidates or a missing waitFor.
+                Do not change passing steps, ids, titles or descriptions unless required.
+                Answer with the COMPLETE corrected scenario JSON and nothing else — no markdown fences.
+                """));
+        messages.add(msg("user", "Current scenario:\n" + currentJson
+                + "\n\nFailure report:\n" + failureReport.toString()));
+        JsonNode reply = llm.chat(messages, null);
+        String text = reply.path("content").asText("").trim();
+        if (text.startsWith("```")) {
+            text = text.replaceAll("^```(json)?\\s*", "").replaceAll("\\s*```\\s*$", "");
+        }
+        return text;
+    }
+
+    private static Map<String, Object> attempt(int n, UitpCli.Result r, String note) {
+        Map<String, Object> a = new LinkedHashMap<>();
+        a.put("attempt", n);
+        a.put("exitCode", r.exitCode());
+        a.put("passed", r.passed());
+        if (note != null) a.put("note", note);
+        a.put("report", r.json());
+        return a;
+    }
+
+    private static JsonNode msg(String role, String content) {
+        var m = MAPPER.createObjectNode();
+        m.put("role", role);
+        m.put("content", content);
+        return m;
+    }
+}

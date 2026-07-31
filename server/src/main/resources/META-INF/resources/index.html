@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>UI Test Pilot</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧭</text></svg>">
+</head>
+<body>
+
+<!-- ============ auth ============ -->
+<div id="auth-view" class="auth-wrap hidden">
+  <div class="auth-card">
+    <div class="brand"><span class="brand-mark">🧭</span> UI Test Pilot</div>
+    <p class="auth-sub">Chat-driven UI testing with a self-healing regression suite.</p>
+
+    <div id="login-form">
+      <h2>Sign in</h2>
+      <input id="login-email" type="email" placeholder="Email">
+      <input id="login-password" type="password" placeholder="Password">
+      <button class="primary" onclick="doLogin()">Sign in</button>
+      <p class="switch">No account? <a href="#" onclick="showRegister();return false">Register</a></p>
+    </div>
+
+    <div id="register-form" class="hidden">
+      <h2>Register</h2>
+      <input id="reg-email" type="email" placeholder="Work email">
+      <div class="row2">
+        <input id="reg-first" placeholder="First name">
+        <input id="reg-last" placeholder="Family name">
+      </div>
+      <input id="reg-position" placeholder="Position (e.g. QA Engineer)">
+      <input id="reg-password" type="password" placeholder="Choose a password">
+      <button class="primary" onclick="doRegister()">Create account</button>
+      <p class="switch">Already registered? <a href="#" onclick="showLogin();return false">Sign in</a></p>
+    </div>
+    <p id="auth-error" class="error hidden"></p>
+  </div>
+</div>
+
+<!-- ============ app shell ============ -->
+<div id="app-view" class="app hidden">
+  <aside class="sidebar">
+    <div class="brand small"><span class="brand-mark">🧭</span> UI Test Pilot</div>
+    <nav>
+      <a id="nav-chat" href="#" onclick="showTab('chat');return false" class="active">💬 Chat</a>
+      <a id="nav-regression" href="#" onclick="showTab('regression');return false">🧪 Regression Tests</a>
+      <a id="nav-admin" href="#" onclick="showTab('admin');return false" class="hidden">🛡️ Admin</a>
+    </nav>
+    <div class="sidebar-footer">
+      <div id="whoami"></div>
+      <a href="#" onclick="logout();return false">Sign out</a>
+    </div>
+  </aside>
+
+  <main class="main">
+
+    <!-- ============ chat tab ============ -->
+    <section id="tab-chat" class="tab">
+      <div class="chat-layout">
+        <div class="conv-list">
+          <button class="primary block" onclick="newConversation()">+ New chat</button>
+          <div id="conversations"></div>
+        </div>
+        <div class="chat-pane">
+          <div id="messages" class="messages">
+            <div class="placeholder">Start a chat, e.g. <em>“test the login with a wrong username”</em> —
+              the agent will snapshot the page, write the test case, run it and heal it until green.</div>
+          </div>
+          <div class="composer">
+            <textarea id="chat-input" rows="2"
+              placeholder="Describe the test you want… (Enter to send, Shift+Enter for a new line)"></textarea>
+            <button class="primary" id="send-btn" onclick="sendMessage()">Send</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ regression tab ============ -->
+    <section id="tab-regression" class="tab hidden">
+      <div class="reg-layout">
+        <div class="reg-tree">
+          <div class="pane-title">Test suite <button class="ghost" onclick="loadTree()">↻</button></div>
+          <div id="tree"></div>
+        </div>
+        <div class="reg-detail">
+          <div id="reg-empty" class="placeholder">Select a test case on the left.
+            Folders are the topics (login, search…), files are the test cases.</div>
+          <div id="reg-content" class="hidden">
+            <div class="reg-head">
+              <div>
+                <h2 id="reg-title"></h2>
+                <code id="reg-path"></code>
+              </div>
+              <div class="reg-actions">
+                <button onclick="saveScenario()">💾 Save</button>
+                <button onclick="runScenario(false)">▶ Run</button>
+                <button class="primary" onclick="runScenario(true)">▶ Run + Self-heal</button>
+              </div>
+            </div>
+            <h3>Steps in plain language</h3>
+            <ol id="reg-explained" class="explained"></ol>
+            <h3>Test case JSON <span class="hint">(edit here, then Save or Run + Self-heal)</span></h3>
+            <textarea id="reg-json" spellcheck="false"></textarea>
+            <div id="run-result" class="hidden"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ admin tab ============ -->
+    <section id="tab-admin" class="tab hidden">
+      <div class="admin-tabs">
+        <button onclick="loadAdmin('users')" class="ghost">Users</button>
+        <button onclick="loadAdmin('logs')" class="ghost">Logs &amp; errors</button>
+        <button onclick="loadAdmin('conversations')" class="ghost">All chats</button>
+      </div>
+      <div id="admin-content"></div>
+    </section>
+
+  </main>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
