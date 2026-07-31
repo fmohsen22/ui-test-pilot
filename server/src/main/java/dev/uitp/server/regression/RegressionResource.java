@@ -43,8 +43,18 @@ public class RegressionResource {
     @Inject
     LlmClient llm;
 
+    @Inject
+    dev.uitp.server.llm.CodexCli codex;
+
     @ConfigProperty(name = "llm.heal-attempts")
     int healAttempts;
+
+    @ConfigProperty(name = "llm.provider")
+    String provider;
+
+    private boolean healerConfigured() {
+        return "codex".equalsIgnoreCase(provider) || llm.configured();
+    }
 
     public record SaveRequest(String path, String content) {
     }
@@ -88,10 +98,16 @@ public class RegressionResource {
         return Map.of("saved", true, "validate", validation.json());
     }
 
-    /** Run one scenario; with heal=true, on failure the LLM repairs the JSON and re-runs (up to N attempts). */
+    @Inject
+    dev.uitp.server.chat.ChatTx tx;
+
+    /**
+     * Run one scenario; with heal=true, on failure the model repairs the JSON and re-runs
+     * (up to N attempts). NOT @Transactional on purpose — runs take minutes; DB writes go
+     * through short ChatTx transactions.
+     */
     @POST
     @Path("/run")
-    @Transactional
     public Map<String, Object> run(RunRequest req) {
         var user = currentUser.require();
         if (req == null || req.path() == null) throw new BadRequestException("path required");
@@ -102,25 +118,28 @@ public class RegressionResource {
 
         int attempt = 1;
         while (!result.passed() && result.exitCode() == 1 && req.heal() && attempt <= healAttempts) {
-            if (!llm.configured()) {
-                attempts.add(Map.of("note", "self-heal skipped: no LLM configured (set UITP_LLM_API_KEY)"));
+            if (!healerConfigured()) {
+                attempts.add(Map.of("note",
+                        "self-heal skipped: no model configured (set UITP_LLM_API_KEY, or UITP_LLM_PROVIDER=codex)"));
                 break;
             }
             attempt++;
-            String healed;
             try {
-                healed = heal(store.read(req.path()), result.json());
+                if ("codex".equalsIgnoreCase(provider)) {
+                    healViaCodex(req.path(), result.json());   // codex edits the file in place
+                } else {
+                    store.write(req.path(), heal(store.read(req.path()), result.json()));
+                }
             } catch (Exception e) {
-                EventLog.log("ERROR", user.email, "regression.heal", e.toString());
+                tx.log("ERROR", user.email, "regression.heal", e.toString());
                 attempts.add(Map.of("note", "heal attempt failed: " + e.getMessage()));
                 break;
             }
-            store.write(req.path(), healed);
             result = cli.run(req.path(), null);
             attempts.add(attempt(attempt, result, "healed then re-ran"));
         }
 
-        EventLog.log(result.passed() ? "INFO" : "ERROR", user.email, "regression.run",
+        tx.log(result.passed() ? "INFO" : "ERROR", user.email, "regression.run",
                 req.path() + " -> exit " + result.exitCode() + " after " + attempts.size() + " attempt(s)");
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("passed", result.passed());
@@ -132,6 +151,24 @@ public class RegressionResource {
         } catch (Exception ignored) {
         }
         return out;
+    }
+
+    /** Codex-provider heal: Codex edits the failing scenario file in place inside the project dir. */
+    private void healViaCodex(String relPath, JsonNode failureReport) {
+        String prompt = """
+                The UI test scenario file %s failed when run by the uitp runner.
+                Failure report (failed step index, error, fresh DOM digest with ranked selectors):
+                %s
+                Edit the file %s IN PLACE to fix ONLY what is needed to make it pass — usually the
+                failing step's target selector candidates or a missing waitFor. Do not change ids,
+                titles or descriptions unless required. Keep it valid scenario JSON (schemaVersion 1).
+                Do not run the scenario yourself; the server re-runs it after you finish.
+                """.formatted(relPath, failureReport.toString(), relPath);
+        var result = codex.exec(prompt, cli.projectDir());
+        if (result.exitCode() != 0 && result.finalMessage().isBlank()) {
+            throw new IllegalStateException("codex heal failed: " + result.transcript()
+                    .substring(Math.max(0, result.transcript().length() - 500)));
+        }
     }
 
     /** Single-shot heal: failure report + current JSON -> corrected full scenario JSON. */

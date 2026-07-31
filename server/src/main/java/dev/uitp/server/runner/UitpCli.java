@@ -91,6 +91,7 @@ public class UitpCli {
         try {
             ProcessBuilder pb = new ProcessBuilder(cmd);
             pb.directory(projectDir().toFile());
+            pb.redirectInput(ProcessBuilder.Redirect.from(dev.uitp.server.llm.CodexCli.nullDevice()));
             Process p = pb.start();
             String stdout = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
             String stderr = new String(p.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);

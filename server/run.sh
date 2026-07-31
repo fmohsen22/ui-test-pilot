@@ -4,6 +4,11 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
+if [ -f .env ]; then
+  echo "[uitp-server] loading .env"
+  set -a; . ./.env; set +a
+fi
+
 echo "[uitp-server] starting postgres (+ pgadmin) ..."
 docker compose up -d
 

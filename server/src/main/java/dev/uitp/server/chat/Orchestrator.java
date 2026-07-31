@@ -32,6 +32,9 @@ public class Orchestrator {
     LlmClient llm;
 
     @Inject
+    dev.uitp.server.llm.CodexCli codex;
+
+    @Inject
     UitpCli cli;
 
     @Inject
@@ -39,6 +42,9 @@ public class Orchestrator {
 
     @ConfigProperty(name = "llm.max-tool-iterations")
     int maxIterations;
+
+    @ConfigProperty(name = "llm.provider")
+    String provider;
 
     static final String SYSTEM_PROMPT = """
             You are UI Test Pilot, an agent that authors, runs and heals UI test scenarios.
@@ -74,6 +80,9 @@ public class Orchestrator {
 
     /** Runs the agent loop. Persists tool messages into the conversation as it goes. */
     public Reply respond(Conversation conversation, List<ChatMessage> history) {
+        if ("codex".equalsIgnoreCase(provider)) {
+            return respondViaCodex(conversation, history);
+        }
         ArrayNode messages = MAPPER.createArrayNode();
         messages.add(msg("system", SYSTEM_PROMPT + "\nProject dir: " + cli.projectDir()));
         for (ChatMessage m : history) {
@@ -117,6 +126,43 @@ public class Orchestrator {
                 + "send a follow-up message to continue.", events);
     }
 
+    /**
+     * Codex-provider path: Codex IS an agent — instead of a tool-calling loop we hand
+     * it the whole task once; it runs the uitp CLI and edits scenario files itself
+     * inside the project dir, then reports back. Auth comes from `codex login`
+     * (the user's ChatGPT account), so no API key is involved.
+     */
+    private Reply respondViaCodex(Conversation conversation, List<ChatMessage> history) {
+        StringBuilder prompt = new StringBuilder();
+        prompt.append(SYSTEM_PROMPT);
+        prompt.append("\nYou are running inside the project dir. The uitp runner is invoked as:\n  node ")
+                .append(cliJsPath())
+                .append(" <snapshot|run|run-all|validate> ...\n")
+                .append("Author scenario files under scenarios/ yourself with your file tools.\n");
+        prompt.append("\nConversation so far:\n");
+        for (ChatMessage m : history) {
+            if ("tool".equals(m.role)) continue;
+            prompt.append(m.role.equals("user") ? "USER: " : "ASSISTANT: ")
+                    .append(m.content).append("\n");
+        }
+        prompt.append("\nRespond to the last USER message. Do the work now; your final message is shown to the user.");
+
+        var result = codex.exec(prompt.toString(), cli.projectDir());
+        persistToolMessage(conversation, "codex",
+                "exec in " + cli.projectDir(), truncate(result.transcript(), 20_000));
+        String text = result.finalMessage().isBlank()
+                ? "Codex returned no message (exit " + result.exitCode() + ") — see the codex tool entry above."
+                : result.finalMessage();
+        return new Reply(text, List.of(new ToolEvent("codex", "", truncate(result.transcript(), 2000))));
+    }
+
+    private String cliJsPath() {
+        return java.nio.file.Path.of(
+                org.eclipse.microprofile.config.ConfigProvider.getConfig()
+                        .getValue("uitp.pilot-dir", String.class))
+                .toAbsolutePath().normalize().resolve("dist/cli.js").toString();
+    }
+
     String executeTool(String name, String argsRaw) {
         try {
             JsonNode args = MAPPER.readTree(argsRaw.isBlank() ? "{}" : argsRaw);
@@ -156,13 +202,12 @@ public class Orchestrator {
         }
     }
 
+    @Inject
+    ChatTx tx;
+
     private void persistToolMessage(Conversation conversation, String tool, String args, String result) {
-        ChatMessage m = new ChatMessage();
-        m.conversation = conversation;
-        m.role = "tool";
-        m.toolName = tool;
-        m.content = "args: " + truncate(args, 4000) + "\nresult: " + truncate(result, 20_000);
-        m.persist();
+        tx.toolMessage(conversation.id, tool,
+                "args: " + truncate(args, 4000) + "\nresult: " + truncate(result, 20_000));
     }
 
     static ArrayNode toolDefs() {

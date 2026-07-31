@@ -30,6 +30,9 @@ public class ChatResource {
     @Inject
     Orchestrator orchestrator;
 
+    @Inject
+    ChatTx tx;
+
     public record NewMessage(String content) {
     }
 
@@ -56,43 +59,33 @@ public class ChatResource {
         return Map.of("id", c.id, "title", c.title, "messages", messages);
     }
 
+    /**
+     * Deliberately NOT @Transactional: the model/runner work can take minutes and must
+     * not hold a DB transaction (the JTA reaper aborts them after ~5 min). All writes
+     * go through ChatTx's short transactions instead.
+     */
     @POST
     @Path("/conversations/{id}/messages")
-    @Transactional
     public Map<String, Object> send(@PathParam("id") long id, NewMessage req) {
         if (req == null || req.content() == null || req.content().isBlank()) {
             throw new BadRequestException("message content required");
         }
         Conversation c = owned(id);
+        String userContent = req.content().trim();
+        tx.userMessage(c.id, userContent);
+
         List<ChatMessage> history = ChatMessage.ofConversation(c);
-
-        ChatMessage userMsg = new ChatMessage();
-        userMsg.conversation = c;
-        userMsg.role = "user";
-        userMsg.content = req.content().trim();
-        userMsg.persist();
-        history.add(userMsg);
-
         Orchestrator.Reply reply;
         try {
             reply = orchestrator.respond(c, history);
         } catch (Exception e) {
-            EventLog.log("ERROR", c.user.email, "chat.respond", e.toString());
+            tx.log("ERROR", c.user.email, "chat.respond", e.toString());
             reply = new Orchestrator.Reply("Something went wrong talking to the model or the runner: "
                     + e.getMessage(), List.of());
         }
 
-        ChatMessage assistantMsg = new ChatMessage();
-        assistantMsg.conversation = c;
-        assistantMsg.role = "assistant";
-        assistantMsg.content = reply.text();
-        assistantMsg.persist();
-
-        c.updatedAt = Instant.now();
-        if (c.title.equals("New chat")) {
-            c.title = userMsg.content.length() > 60 ? userMsg.content.substring(0, 60) + "…" : userMsg.content;
-        }
-        EventLog.log("INFO", c.user.email, "chat.message", "conversation=" + c.id
+        tx.assistantMessage(c.id, reply.text(), userContent);
+        tx.log("INFO", c.user.email, "chat.message", "conversation=" + c.id
                 + " tools=" + reply.events().size());
         return conversation(id);
     }
