@@ -1,6 +1,6 @@
 import type { Frame, Page } from 'playwright';
 import path from 'node:path';
-import type { Step, TargetCandidate } from '../schema/scenario.js';
+import type { Step, TargetCandidate, WaitForSpec } from '../schema/scenario.js';
 import { interpolate } from '../util/env.js';
 import { resolveTarget, locatorFor } from './resolve.js';
 import { runExpect, urlGlobToRegExp } from './asserts.js';
@@ -25,10 +25,71 @@ async function scopeFor(page: Page, step: Step): Promise<Page | Frame> {
   return frame;
 }
 
-/** Execute one step. Returns the matched selector for element actions. */
+/**
+ * Execute one step. Returns the matched selector for element actions.
+ *
+ * A `waitFor` block is honoured on every step, not only on `action: "waitFor"`:
+ * the action runs first, then the wait (e.g. click "Save" → wait for "Saved").
+ */
 export async function executeStep(ctx: StepContext, step: Step): Promise<TargetCandidate | null> {
-  const { page } = ctx.session;
   const timeout = step.timeoutMs ?? DEFAULT_STEP_TIMEOUT;
+  const matched = await performAction(ctx, step, timeout);
+  if (step.waitFor) {
+    try {
+      await waitForCondition(ctx.session.page, step, step.waitFor, timeout);
+    } catch (e) {
+      // Tell the healer the action itself succeeded and only the wait failed.
+      if (step.action !== 'waitFor' && e instanceof Error) {
+        e.message = `waitFor after ${step.action}: ${e.message}`;
+      }
+      throw e;
+    }
+  }
+  return matched;
+}
+
+async function waitForCondition(
+  page: Page,
+  step: Step,
+  w: WaitForSpec,
+  timeout: number,
+): Promise<void> {
+  if (w.url) {
+    await page.waitForURL(urlGlobToRegExp(interpolate(w.url)), { timeout });
+  }
+  if (w.selector) {
+    const scope = await scopeFor(page, step);
+    if (w.state === 'hidden') {
+      // A detached element counts as hidden — don't require it to resolve first.
+      // Every candidate must be hidden, so a stale candidate can't pass early.
+      await Promise.all(
+        w.selector.map((c) => locatorFor(scope, c).first().waitFor({ state: 'hidden', timeout })),
+      );
+    } else {
+      // Attachment gets the full step timeout too (not just the 1.5 s probe):
+      // the element often appears only after a server round trip.
+      const { locator } = await resolveTarget(scope, w.selector, undefined, timeout);
+      await locator.waitFor({ state: w.state, timeout });
+    }
+  }
+  if (w.text) {
+    await page
+      .getByText(interpolate(w.text))
+      .first()
+      .waitFor({ state: w.state, timeout });
+  }
+  if (w.networkIdle) {
+    await page.waitForLoadState('networkidle', { timeout }).catch(() => {});
+  }
+  await waitForDomQuiet(page);
+}
+
+async function performAction(
+  ctx: StepContext,
+  step: Step,
+  timeout: number,
+): Promise<TargetCandidate | null> {
+  const { page } = ctx.session;
   const value = step.value !== undefined ? interpolate(step.value) : undefined;
 
   switch (step.action) {
@@ -47,25 +108,7 @@ export async function executeStep(ctx: StepContext, step: Step): Promise<TargetC
       return null;
     }
     case 'waitFor': {
-      const w = step.waitFor!;
-      if (w.url) {
-        await page.waitForURL(urlGlobToRegExp(interpolate(w.url)), { timeout });
-      }
-      if (w.selector) {
-        const scope = await scopeFor(page, step);
-        const { locator } = await resolveTarget(scope, w.selector);
-        await locator.waitFor({ state: w.state, timeout });
-      }
-      if (w.text) {
-        await page
-          .getByText(interpolate(w.text))
-          .first()
-          .waitFor({ state: w.state, timeout });
-      }
-      if (w.networkIdle) {
-        await page.waitForLoadState('networkidle', { timeout }).catch(() => {});
-      }
-      await waitForDomQuiet(page);
+      // The wait itself runs in executeStep, same as for every other action.
       return null;
     }
     case 'expect': {
@@ -81,7 +124,7 @@ export async function executeStep(ctx: StepContext, step: Step): Promise<TargetC
           locator = locatorFor(scope, step.target[0]);
           matched = step.target[0];
         } else {
-          const resolved = await resolveTarget(scope, step.target);
+          const resolved = await resolveTarget(scope, step.target, undefined, timeout);
           locator = resolved.locator;
           matched = resolved.matched;
         }
@@ -92,7 +135,7 @@ export async function executeStep(ctx: StepContext, step: Step): Promise<TargetC
     default: {
       // Element actions.
       const scope = await scopeFor(page, step);
-      const { locator, matched } = await resolveTarget(scope, step.target!);
+      const { locator, matched } = await resolveTarget(scope, step.target!, undefined, timeout);
       switch (step.action) {
         case 'click':
           if (step.force) {

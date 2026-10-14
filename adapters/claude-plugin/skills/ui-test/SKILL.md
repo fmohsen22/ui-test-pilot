@@ -102,7 +102,7 @@ When the user asks to "run the UI tests / regression": just `uitp run-all uitest
     "storageState": "states/seeker.json",      // load before run
     "saveStorageState": "states/seeker.json"   // save on success
   },
-  "env": { "required": ["WOHNI_TEST_PASSWORD"] },
+  "env": { "required": ["APP_TEST_PASSWORD"] },
   "steps": [
     { "description": "intent in plain words",   // REQUIRED on every step
       "action": "goto|click|fill|select|check|uncheck|press|hover|upload|scrollIntoView|waitFor|http|expect",
@@ -121,4 +121,4 @@ When the user asks to "run the UI tests / regression": just `uitp run-all uitest
 }
 ```
 
-Notes: `select` matches by option label first, then by value. `expect.url` value is a glob over the absolute URL (`**localhost:8180/**`). `upload` value is a file path relative to the scenario file.
+Notes: `waitFor` works on any step — the action runs first, then the wait (e.g. click "Save" + `waitFor` the "Saved" toast); with `action: "waitFor"` it is the whole step. All waits, including resolving `target` / `waitFor.selector`, use the step's `timeoutMs`. `select` matches by option label first, then by value. `expect.url` value is a glob over the absolute URL (`**localhost:8180/**`). `upload` value is a file path relative to the scenario file.

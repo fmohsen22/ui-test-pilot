@@ -40,6 +40,9 @@ export class NoCandidateMatchedError extends Error {
   }
 }
 
+/** Re-check interval once the initial ranked probe pass found nothing. */
+const POLL_MS = 200;
+
 export interface ResolvedTarget {
   locator: Locator;
   matched: TargetCandidate;
@@ -47,27 +50,40 @@ export interface ResolvedTarget {
 
 /**
  * Probe candidates in order with a short existence check each; return the
- * first that resolves to >= 1 element. Total budget ≈ probeMs per candidate.
+ * first that resolves to >= 1 element. If none matched and `timeoutMs` has not
+ * elapsed yet, keep polling all candidates (still in rank order) until it has —
+ * so an element that appears after a slow server round trip is still found.
+ * Total budget ≈ max(probeMs per candidate, timeoutMs).
  */
 export async function resolveTarget(
   scope: Page | Frame,
   target: Target,
   probeMs = 1500,
+  timeoutMs = 0,
 ): Promise<ResolvedTarget> {
-  const attempts: CandidateAttempt[] = [];
+  const deadline = Date.now() + timeoutMs;
   for (const candidate of target) {
     const locator = locatorFor(scope, candidate).first();
     try {
       await locator.waitFor({ state: 'attached', timeout: probeMs });
       return { locator, matched: candidate };
     } catch {
-      attempts.push({
-        strategy: candidate.strategy,
-        value: candidate.value,
-        ...(candidate.name ? { name: candidate.name } : {}),
-        error: '0 elements',
-      });
+      // Not attached within the probe — try the next candidate.
     }
   }
-  throw new NoCandidateMatchedError(attempts);
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, Math.min(POLL_MS, Math.max(deadline - Date.now(), 0))));
+    for (const candidate of target) {
+      const locator = locatorFor(scope, candidate).first();
+      if ((await locator.count().catch(() => 0)) > 0) return { locator, matched: candidate };
+    }
+  }
+  throw new NoCandidateMatchedError(
+    target.map((candidate) => ({
+      strategy: candidate.strategy,
+      value: candidate.value,
+      ...(candidate.name ? { name: candidate.name } : {}),
+      error: '0 elements',
+    })),
+  );
 }
