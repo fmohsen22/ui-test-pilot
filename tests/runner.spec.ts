@@ -237,4 +237,102 @@ describe('runner', () => {
     });
     expect(result.status).toBe('passed');
   });
+
+  // delayed.html shows "Saved" (and removes "Saving changes") 3 s after the click —
+  // longer than the 1.5 s candidate probe.
+  const delayedScenario = (id: string, steps: unknown[]) =>
+    writeScenario(`${id}.json`, {
+      schemaVersion: 1,
+      id,
+      title: id,
+      feature: 'waits',
+      steps: [{ description: 'open preferences', action: 'goto', value: '/delayed.html' }, ...steps],
+    });
+  const savedNow = {
+    description: 'confirmation already there',
+    action: 'expect',
+    timeoutMs: 100,
+    target: [{ strategy: 'testid', value: 'saved' }],
+    expect: { type: 'count', value: 1 },
+  };
+  const run = (file: string) =>
+    runScenario({ scenarioFile: file, baseUrl: server.baseUrl, artifactsRoot: path.join(workDir, '.uitp') });
+
+  it('honours waitFor attached to a click, with a selector that appears after the probe', async () => {
+    const file = delayedScenario('fixture-click-waitfor-selector', [
+      {
+        description: 'save and wait for the confirmation',
+        action: 'click',
+        target: [{ strategy: 'id', value: 'save' }],
+        waitFor: { selector: [{ strategy: 'testid', value: 'saved' }] },
+      },
+      savedNow,
+    ]);
+    const result = await run(file);
+    expect(result.failure?.message).toBeUndefined();
+    expect(result.status).toBe('passed');
+    expect(result.steps[1].matchedSelector).toEqual({ strategy: 'id', value: 'save' });
+  });
+
+  it('honours waitFor text / hidden on a click, and hidden passes for an already-detached element', async () => {
+    const file = delayedScenario('fixture-click-waitfor-hidden', [
+      {
+        description: 'save and wait until the spinner is gone',
+        action: 'click',
+        target: [{ strategy: 'id', value: 'save' }],
+        waitFor: { selector: [{ strategy: 'id', value: 'saving' }], state: 'hidden' },
+      },
+      savedNow,
+      {
+        description: 'spinner is gone (already detached)',
+        action: 'waitFor',
+        timeoutMs: 500,
+        waitFor: { selector: [{ strategy: 'id', value: 'saving' }], state: 'hidden' },
+      },
+      { description: 'reload', action: 'goto', value: '/delayed.html', waitFor: { text: 'Preferences' } },
+      {
+        description: 'save and wait for the text',
+        action: 'click',
+        target: [{ strategy: 'id', value: 'save' }],
+        waitFor: { text: 'Saved' },
+      },
+      savedNow,
+    ]);
+    const result = await run(file);
+    expect(result.failure?.message).toBeUndefined();
+    expect(result.status).toBe('passed');
+  });
+
+  it('element targets wait up to the step timeout, not just the probe', async () => {
+    const file = delayedScenario('fixture-expect-slow-element', [
+      { description: 'save', action: 'click', target: [{ strategy: 'id', value: 'save' }] },
+      {
+        description: 'confirmation appears after the round trip',
+        action: 'expect',
+        target: [{ strategy: 'testid', value: 'saved' }],
+        expect: { type: 'visible' },
+      },
+    ]);
+    const result = await run(file);
+    expect(result.failure?.message).toBeUndefined();
+    expect(result.status).toBe('passed');
+    expect(result.steps[2].matchedSelector).toEqual({ strategy: 'testid', value: 'saved' });
+  });
+
+  it('a failing waitFor on an action fails that step and says so', async () => {
+    const file = delayedScenario('fixture-click-waitfor-fails', [
+      {
+        description: 'save and wait for something that never comes',
+        action: 'click',
+        timeoutMs: 1000,
+        target: [{ strategy: 'id', value: 'save' }],
+        waitFor: { text: 'Never shown' },
+      },
+    ]);
+    const result = await run(file);
+    expect(result.status).toBe('failed');
+    expect(result.failure!.stepIndex).toBe(1);
+    expect(result.failure!.errorType).toBe('timeout');
+    expect(result.failure!.message).toMatch(/^waitFor after click: /);
+  });
 });

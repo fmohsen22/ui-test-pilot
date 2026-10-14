@@ -68,7 +68,7 @@ See [examples/](examples/) and the full schema reference in [adapters/claude-plu
 
 - **Claude Code**: install [adapters/claude-plugin/](adapters/claude-plugin/) as a plugin, or copy/symlink `adapters/claude-plugin/skills/ui-test/` into a project's `.claude/skills/`. Then: *"test the login"*.
 - **Codex**: copy [adapters/codex/uitest-prompt.md](adapters/codex/uitest-prompt.md) to `~/.codex/prompts/uitest.md` and/or add [adapters/codex/AGENTS-section.md](adapters/codex/AGENTS-section.md) to the app's `AGENTS.md`.
-- **v2 (planned)**: a built-in orchestrator calling models via OpenRouter. The library API (`import { runScenario, captureDigest, validateScenario } from 'ui-test-pilot'`) already exposes everything it needs.
+- **uitp-server (v2)**: a self-hosted Quarkus web app in [server/](server/) — chat UI (any OpenAI-compatible model authors/heals scenarios through the runner), a regression-suite browser with plain-language step rendering and a one-click run + self-heal loop, simple team login with per-user history and an admin view. See [server/README.md](server/README.md).
 
 ## App-side layout (created by `uitp init`)
 

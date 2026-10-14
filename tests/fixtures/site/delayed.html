@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Fixture Delayed Save</title></head>
+<body>
+  <h1>Preferences</h1>
+  <button id="save">Save</button>
+  <p id="saving">Saving changes</p>
+  <script>
+    // Simulates a slow server round trip: the confirmation shows up (and the
+    // spinner goes away) well after the 1.5 s candidate probe.
+    document.getElementById('save').addEventListener('click', () => {
+      setTimeout(() => {
+        const done = document.createElement('p');
+        done.setAttribute('data-testid', 'saved');
+        done.textContent = 'Saved';
+        document.body.appendChild(done);
+        document.getElementById('saving').remove();
+      }, 3000);
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,33 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: uitp-db
+    environment:
+      POSTGRES_DB: uitp
+      POSTGRES_USER: uitp
+      POSTGRES_PASSWORD: uitp
+    ports:
+      - "5544:5432"
+    volumes:
+      - uitp-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U uitp"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Optional DB admin UI (http://localhost:5545, login admin@uitp.local / uitp)
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: uitp-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@uitp.local
+      PGADMIN_DEFAULT_PASSWORD: uitp
+    ports:
+      - "5545:80"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  uitp-pgdata:

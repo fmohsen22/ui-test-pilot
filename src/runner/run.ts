@@ -67,6 +67,7 @@ export async function runScenario(opts: RunOptions): Promise<RunResult> {
     digest: null,
     storageStateSaved: null,
     artifactsDir: null,
+    finalScreenshot: null,
   };
 
   // Parse + validate (exit-code-2 territory).
@@ -171,6 +172,7 @@ export async function runScenario(opts: RunOptions): Promise<RunResult> {
         }
         base.status = 'failed';
         base.failure = await buildFailure(session, step, i, e, artifactsDir, secrets);
+        base.finalScreenshot = await captureFinal(session, artifactsDir);
         base.durationMs = Date.now() - t0;
         writeResult(artifactsDir, base);
         return base;
@@ -188,11 +190,22 @@ export async function runScenario(opts: RunOptions): Promise<RunResult> {
       await session.context.storageState({ path: out });
       base.storageStateSaved = out;
     }
+    base.finalScreenshot = await captureFinal(session, artifactsDir);
     base.durationMs = Date.now() - t0;
     writeResult(artifactsDir, base);
     return base;
   } finally {
     await session.close();
+  }
+}
+
+async function captureFinal(session: BrowserSession, artifactsDir: string): Promise<string | null> {
+  try {
+    const p = path.join(artifactsDir, 'final.png');
+    await session.page.screenshot({ path: p, fullPage: false });
+    return p;
+  } catch {
+    return null;
   }
 }
 
