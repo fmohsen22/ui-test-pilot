@@ -1,6 +1,6 @@
 {
   "name": "ui-test-pilot",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Agent-driven JSON-protocol UI testing: a deterministic Playwright runner driven by AI agents (Claude Code, Codex) that author and heal scenario JSON files.",
   "type": "module",
   "license": "MIT",

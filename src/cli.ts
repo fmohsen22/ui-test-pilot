@@ -53,7 +53,7 @@ function exitCodeFor(result: RunResult): number {
 const program = new Command()
   .name('uitp')
   .description('Agent-driven JSON-protocol UI testing (deterministic Playwright runner)')
-  .version('0.1.0');
+  .version('0.1.2');
 
 program
   .command('snapshot')
