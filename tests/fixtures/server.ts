@@ -33,6 +33,11 @@ export async function startFixtureServer(): Promise<FixtureServer> {
   const port = typeof address === 'object' && address ? address.port : 0;
   return {
     baseUrl: `http://127.0.0.1:${port}`,
-    close: () => new Promise((resolve) => server.close(() => resolve())),
+    close: () =>
+      new Promise((resolve) => {
+        server.close(() => resolve());
+        // Node < 19 waits for idle keep-alive sockets (the browser's) before closing.
+        server.closeAllConnections();
+      }),
   };
 }
