@@ -36,13 +36,28 @@ export async function openSession(opts: BrowserOptions = {}): Promise<BrowserSes
   const name = selectedBrowser();
   const engine = name === 'firefox' ? firefox : name === 'webkit' ? webkit : chromium;
   let browser: Browser;
-  try {
-    browser = await engine.launch({ headless: !opts.headed });
-  } catch (e) {
-    throw new InfrastructureError(
-      `Failed to launch ${name} — run "npx playwright install ${name}". ${(e as Error).message.split('\n')[0]}`,
-      e,
-    );
+  // UITP_CONNECT_WS_ENDPOINT: drive a browser in a Playwright run-server (e.g. a container with its own
+  // network namespace) instead of launching one locally. exposeNetwork keeps the runner's localhost URLs working.
+  const wsEndpoint = process.env.UITP_CONNECT_WS_ENDPOINT?.trim();
+  if (wsEndpoint) {
+    const exposeNetwork = process.env.UITP_CONNECT_EXPOSE_NETWORK ?? '<loopback>';
+    try {
+      browser = await engine.connect(wsEndpoint, { exposeNetwork });
+    } catch (e) {
+      throw new InfrastructureError(
+        `Failed to connect to the ${name} server at ${wsEndpoint} (its Playwright version must equal uitp's). ${(e as Error).message.split('\n')[0]}`,
+        e,
+      );
+    }
+  } else {
+    try {
+      browser = await engine.launch({ headless: !opts.headed });
+    } catch (e) {
+      throw new InfrastructureError(
+        `Failed to launch ${name} — run "npx playwright install ${name}". ${(e as Error).message.split('\n')[0]}`,
+        e,
+      );
+    }
   }
   const context = await browser.newContext({
     viewport: opts.viewport ?? { width: 1280, height: 800 },

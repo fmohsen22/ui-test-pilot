@@ -80,6 +80,10 @@ uitests/
 └── states/            # storage states (gitignored)
 ```
 
+## Remote browser (Playwright run-server)
+
+By default uitp launches a local browser (`UITP_BROWSER=chromium|firefox|webkit`). Set `UITP_CONNECT_WS_ENDPOINT` (for example `ws://127.0.0.1:3000/`) to drive a browser in a Playwright `run-server` instead, such as a container with its own network namespace. `UITP_CONNECT_EXPOSE_NETWORK` (default `<loopback>`) is passed as `exposeNetwork`, so the scenario's `localhost` URLs still reach the runner's network. The server's Playwright version must equal uitp's own (`playwright` in `package-lock.json`, 1.60.0 today; container `mcr.microsoft.com/playwright:v1.60.0-noble`).
+
 ## Development
 
 ```bash
